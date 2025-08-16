@@ -1,0 +1,15 @@
+//#service-request-reply
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "demo";
+option java_outer_classname = "BTreeProto";
+
+message EAVT {
+    string e = 1;
+    string a = 2;
+    bytes v = 3;
+    int64 t = 4;
+    bool valid = 5;
+    int32 tpe = 6;
+}
