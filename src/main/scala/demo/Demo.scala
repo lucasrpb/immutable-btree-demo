@@ -28,8 +28,8 @@ object Demo {
       val id = UUID.randomUUID().toString
       val tmp = timecounter.getAndIncrement()//System.nanoTime()
 
-      val likes = Datom(id, "favorite-food", foods(rand.nextInt(0, foods.length)), tmp)
-      val owns = Datom(id, "owns", objects(rand.nextInt(0, objects.length)), tmp)
+      val likes = Datom(id, "favorite-food", DatomTypes.STRING, foods(rand.nextInt(0, foods.length)), tmp)
+      val owns = Datom(id, "owns", DatomTypes.STRING, objects(rand.nextInt(0, objects.length)), tmp)
 
       data = data ++ Seq(likes, owns)
     }
@@ -48,7 +48,7 @@ object Demo {
     val index = new Index(builder)
 
     val t0 = System.nanoTime()
-    //val list1 = data.sorted(builder.ordering)
+    val list1 = data.sorted(builder.ordering)
     val insertion = Await.result(index.insert(data), Duration.Inf)
 
     val t1 = System.nanoTime()
@@ -57,11 +57,11 @@ object Demo {
     println(s"insertion: ${elapsedInsertion} ms")
 
     val t2 = System.nanoTime()
-    val list2 = Await.result(index.inOrder(), Duration.Inf)
+    val list2 = Await.result(index.all(), Duration.Inf)
     val t3 = System.nanoTime()
     val elapsedInOrder = (t3 - t2)/1_000_000
 
-  //  val equal = list2 == list1
+    val equal = list2 == list1
 
     println(s"inorder: ${elapsedInOrder} ms")
 

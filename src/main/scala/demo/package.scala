@@ -39,7 +39,7 @@ package object demo {
     case _ => throw new NotImplementedException("not implemented!")
   }
 
-  implicit def caseClassToDatom(o: Datom): EAVT = {
+  /*implicit def caseClassToEAVT(o: Datom): EAVT = {
     import DatomTypeBytesConverters._
 
     o.value match {
@@ -50,9 +50,9 @@ package object demo {
       case v: Boolean => EAVT.of(o.e, o.a, v, o.timestamp, o.valid, DatomTypes.BOOLEAN)
       case _ => throw new NotImplementedException("not implemented!")
     }
-  }
+  }*/
 
-  case class Datom(e: String, a: String, value: Any, timestamp: Long, valid: Boolean = true)
+  case class Datom(e: String, a: String, tpe: Int, value: Any, t: Long, valid: Boolean = true)
 
   val ordering: Ordering[Datom] = new Ordering[Datom] {
     override def compare(x: Datom, y: Datom): Int = {
@@ -65,9 +65,9 @@ package object demo {
       if(comp != 0) return comp
 
       comp = x.tpe match {
-        case DatomTypes.NUMBER => x.v.asInstanceOf[Double].compareTo(y.v.asInstanceOf[Double])
-        case DatomTypes.STRING => x.v.asInstanceOf[String].compareTo(y.v.asInstanceOf[String])
-        case DatomTypes.BOOLEAN => x.v.asInstanceOf[Boolean].compareTo(y.v.asInstanceOf[Boolean])
+        case DatomTypes.NUMBER => x.value.asInstanceOf[Double].compareTo(y.value.asInstanceOf[Double])
+        case DatomTypes.STRING => x.value.asInstanceOf[String].compareTo(y.value.asInstanceOf[String])
+        case DatomTypes.BOOLEAN => x.value.asInstanceOf[Boolean].compareTo(y.value.asInstanceOf[Boolean])
         case _ => 0
       }
 

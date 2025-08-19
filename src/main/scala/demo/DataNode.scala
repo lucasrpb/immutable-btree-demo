@@ -11,7 +11,7 @@ class DataNode(val id: String)(val builder: IndexBuilt) extends Node {
   override val MIN: Int = builder.MIN
   override val MAX: Int = builder.MAX
 
-  protected var data = Array.empty[Datom]
+  var data = Array.empty[Datom]
 
   def insert(list: Seq[Datom]): Try[Int] = {
     val existing = list.filter(data.search(_).isInstanceOf[Found])

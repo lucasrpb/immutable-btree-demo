@@ -38,18 +38,22 @@ object Demo2 {
 
     val t0 = System.nanoTime()
 
-    for(j<-0 until 1_000){
+    for(j<-0 until 100){
 
       var data = Seq.empty[Datom]
-      val tmp = System.nanoTime()
+      val tmp = timecounter.getAndIncrement()//System.nanoTime()
 
       for(i<-0 until 1_000){
         val id = UUID.randomUUID().toString
+        val food = foods(rand.nextInt(0, foods.length))
 
-        val likes = Datom(id, "favorite-food", foods(rand.nextInt(0, foods.length)), tmp)
-        val owns = Datom(id, "owns", objects(rand.nextInt(0, objects.length)), tmp)
+        val likes = Datom(id, "favorite-food", DatomTypes.STRING, food, tmp)
+        val owns = Datom(id, "owns", DatomTypes.STRING, objects(rand.nextInt(0, objects.length)), tmp)
 
-        data = data ++ Seq(likes, owns)
+        val newFavoriteFood = Datom(id, "favorite-food", DatomTypes.STRING, "other-food", tmp + 1L)
+        val deletePrevious = Datom(likes.e, likes.a, DatomTypes.STRING, food, tmp + 1L, false)
+
+        data = data ++ Seq(likes, owns, deletePrevious, newFavoriteFood)
       }
 
       println(s"insertion nbr: ${j}...")
@@ -57,10 +61,6 @@ object Demo2 {
       val insertion = Await.result(index.insert(data), Duration.Inf)
 
       assert(insertion > 0L)
-
-      allData.foreach { case (k, data) =>
-
-      }
     }
 
     println("filled...")
@@ -73,9 +73,11 @@ object Demo2 {
     println(s"insertion: ${elapsedInsertion} ms")
 
     val t2 = System.nanoTime()
-    val list2 = Await.result(index.inOrder(), Duration.Inf)
+    val list2 = Await.result(index.all(index.inOrder2()), Duration.Inf)
     val t3 = System.nanoTime()
     val elapsedInOrder = (t3 - t2)/1_000_000
+
+    val list3 = Await.result(index.all(index.inOrder2(50)), Duration.Inf)
 
   //  val equal = list2 == list1
 

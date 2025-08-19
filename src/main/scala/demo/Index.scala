@@ -3,6 +3,7 @@ package demo
 import demo.IndexBuilder.IndexBuilt
 
 import java.util.concurrent.atomic.AtomicLong
+import scala.collection.concurrent.TrieMap
 import scala.concurrent.Future
 import scala.util.Try
 import scala.util.{Failure, Success}
@@ -10,6 +11,7 @@ import scala.util.{Failure, Success}
 class Index(val builder: IndexBuilt) {
 
   import builder._
+  val $this = this
 
   implicit val ctx: IndexContext = new IndexContext(builder)
 
@@ -219,4 +221,221 @@ class Index(val builder: IndexBuilt) {
       case Some(root) => ctx.getNode(root).flatMap(inOrder(_))
     }
   }
+
+  def getLeftMost(start: Option[Node]): Future[Option[DataNode]] = {
+    start match {
+      case None => Future.successful(None)
+      case Some(b) => b match {
+        case b: DataNode => Future.successful(Some(b))
+        case b: MetaNode =>
+
+          b.setPointers()
+
+          ctx.getNode(b.links(0)._2).flatMap(b => getLeftMost(Some(b)))
+      }
+    }
+  }
+
+  def getRightMost(start: Option[Node]): Future[Option[DataNode]] = {
+    start match {
+      case None => Future.successful(None)
+      case Some(b) => b match {
+        case b: DataNode => Future.successful(Some(b))
+        case b: MetaNode =>
+
+          b.setPointers()
+
+          ctx.getNode(b.links(b.links.length - 1)._2).flatMap(b => getRightMost(Some(b)))
+      }
+    }
+  }
+
+  def first(): Future[Option[DataNode]] = {
+    if(ctx.root.isEmpty) return Future.successful(None)
+
+    val root = ctx.root.get
+
+    ctx.getNode(root).flatMap{ b =>
+      ctx.setParent(b.id, None)
+      getLeftMost(Some(b))
+    }
+  }
+
+  def last(): Future[Option[DataNode]] = {
+    if(ctx.root.isEmpty) return Future.successful(None)
+
+    val root = ctx.root.get
+
+    ctx.getNode(root).flatMap{ b =>
+      ctx.setParent(b.id, None)
+      getRightMost(Some(b))
+    }
+  }
+
+  def next(current: Option[String]): Future[Option[DataNode]] = {
+
+    def nxt(b: Node): Future[Option[DataNode]] = {
+
+      val opt = ctx.parents(b.id)
+
+      opt match {
+        case None => Future.successful(None)
+        case Some((pid, pos)) => ctx.getMetaNode(pid).flatMap { parent =>
+
+          val pointers = parent.links
+          val len = pointers.length
+
+          parent.setPointers()
+
+          if (pos == len - 1) {
+            nxt(parent)
+          } else {
+            ctx.getNode(pointers(pos + 1)._2).flatMap(b => getLeftMost(Some(b)))
+          }
+        }
+      }
+    }
+
+    current match {
+      case None => first()
+      case Some(current) => ctx.getNode(current).flatMap {nxt(_)}
+    }
+  }
+
+  def prev(current: Option[String]): Future[Option[DataNode]] = {
+
+    def prv(b: Node): Future[Option[DataNode]] = {
+
+      val opt = ctx.parents(b.id)
+
+      opt match {
+        case None => Future.successful(None)
+        case Some((pid, pos)) => ctx.getMetaNode(pid).flatMap { parent =>
+          parent.setPointers()
+
+          if (pos == 0) {
+            prev(Some(parent.id))
+          } else {
+            ctx.getNode(parent.links(pos - 1)._2).flatMap(b => getRightMost(Some(b)))
+          }
+        }
+      }
+    }
+
+    current match {
+      case None => first()
+      case Some(current) => ctx.getNode(current).flatMap {prv(_)}
+    }
+  }
+
+  def inOrder(f: Datom => Boolean = _ => true): AsyncIndexIterator[Seq[Datom]] = new RichAsyncIndexIterator[Datom](f) {
+
+    override def hasNext(): Future[Boolean] = {
+      if(!firstTime) return Future.successful(ctx.root.isDefined)
+      Future.successful(cur.isDefined)
+    }
+
+    override def next(): Future[Seq[Datom]] = {
+      if(!firstTime){
+        firstTime = true
+
+        return first().map {
+          case None =>
+            cur = None
+            Seq.empty[Datom]
+
+          case Some(b) =>
+            cur = Some(b)
+            b.inOrder().filter(f)
+        }
+      }
+
+      $this.next(cur.map(_.id)).map {
+        case None =>
+          cur = None
+          Seq.empty[Datom]
+
+        case Some(b) =>
+          cur = Some(b)
+          b.inOrder().filter(f)
+      }
+    }
+  }
+
+  def all(it: AsyncIndexIterator[Seq[Datom]] = inOrder()): Future[Seq[Datom]] = {
+    it.hasNext().flatMap {
+      case true => it.next().flatMap { list =>
+        all(it).map {
+          list ++ _
+        }
+      }
+      case false => Future.successful(Seq.empty[Datom])
+    }
+  }
+
+  def inOrder2(t: Long = Long.MaxValue, f: Datom => Boolean = _ => true): AsyncIndexIterator[Seq[Datom]] =
+    new RichAsyncIndexIterator[Datom](f) {
+
+      var lastKey: Option[Datom] = None
+
+      protected def filterDatoms(datoms: IndexedSeq[Datom]): Seq[Datom] = {
+        if(datoms.isEmpty) {
+          if(lastKey.isEmpty) IndexedSeq.empty[Datom] else IndexedSeq(lastKey.get)
+        }
+
+        val grouped = TrieMap.from(datoms.groupBy{d => (d.e, d.a, d.value)}.map { case (k, values) =>
+          k -> values.sortBy(_.t)
+        })
+
+        if(lastKey.isDefined && grouped.isDefinedAt((lastKey.get.e, lastKey.get.a, lastKey.get.value))){
+          val k = (lastKey.get.e, lastKey.get.a, lastKey.get.value)
+          grouped.put(k, (grouped(k) :+ lastKey.get).sortBy(_.t))
+        } else if(lastKey.isDefined){
+          grouped.put((lastKey.get.e, lastKey.get.a, lastKey.get.value), IndexedSeq(lastKey.get))
+        }
+
+        val curLast = datoms.last
+
+        grouped.remove((curLast.e, curLast.a, curLast.value))
+
+        lastKey = Some(curLast)
+
+        grouped.map{case (_, values) => values.last}.filter(_.valid).toSeq.sorted(builder.ordering)
+      }
+
+      override def hasNext(): Future[Boolean] = {
+        if(!firstTime) return Future.successful(ctx.root.isDefined)
+        Future.successful(cur.isDefined)
+      }
+
+      override def next(): Future[Seq[Datom]] = {
+        if(!firstTime){
+          firstTime = true
+
+          return first().map {
+            case None =>
+              cur = None
+              IndexedSeq.empty[Datom]
+
+            case Some(b) =>
+              cur = Some(b)
+              val filtered = b.data.filter(f)
+              filterDatoms(filtered.filter(_.t <= t).toIndexedSeq)
+          }
+        }
+
+        $this.next(cur.map(_.id)).map {
+          case None =>
+            cur = None
+            if(lastKey.isEmpty) IndexedSeq.empty[Datom] else IndexedSeq(lastKey.get)
+
+          case Some(b) =>
+            cur = Some(b)
+            val filtered = b.data.filter(f)
+            filterDatoms(filtered.filter(_.t <= t).toIndexedSeq)
+        }
+      }
+    }
+
+
 }
