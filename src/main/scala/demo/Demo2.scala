@@ -51,7 +51,11 @@ object Demo2 {
         val newFavoriteFood = Datom(id, "favorite-food", DatomTypes.STRING, "other-food", tmp + 1L)
         val deletePrevious = Datom(likes.e, likes.a, DatomTypes.STRING, food, tmp + 1L, false)
 
-        data = data ++ Seq(likes, owns, deletePrevious, newFavoriteFood)
+        data = data ++ Seq(likes, owns, deletePrevious)
+
+        if(rand.nextBoolean()){
+          data = data :+ newFavoriteFood
+        }
       }
 
       println(s"insertion nbr: ${j}...")
