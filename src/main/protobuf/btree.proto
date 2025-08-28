@@ -5,11 +5,33 @@ option java_multiple_files = true;
 option java_package = "demo";
 option java_outer_classname = "BTreeProto";
 
-message EAVT {
+message SerializableDatom {
     string e = 1;
     string a = 2;
     bytes v = 3;
     int64 t = 4;
     bool valid = 5;
     int32 tpe = 6;
+}
+
+message SerializableLink {
+    SerializableDatom key = 1;
+    string link = 2;
+}
+
+message SerializableDataNode {
+    string id = 1;
+    string last_version = 2;
+    repeated SerializableDatom data = 3;
+}
+
+message SerializableMetaNode {
+    string id = 1;
+    string last_version = 2;
+    repeated SerializableLink links = 3;
+}
+
+message SerializableIndexContext {
+    string id = 1;
+
 }

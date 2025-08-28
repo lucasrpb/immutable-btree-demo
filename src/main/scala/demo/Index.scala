@@ -15,17 +15,35 @@ class Index(val builder: IndexBuilt) {
 
   implicit val ctx: IndexContext = new IndexContext(builder)
 
-  def findLeaf(node: Node, k: Datom): Future[Option[DataNode]] = {
+  def findLeaf(node: Node, k: Datom)(implicit comparator: Ordering[Datom]): Future[Option[DataNode]] = {
     node match {
-      case leaf: DataNode => Future.successful(Some(leaf))
-      case meta: MetaNode => ctx.getNode(meta.findPath(k)).flatMap(findLeaf(_, k))
+      case leaf: DataNode =>
+        Future.successful(Some(leaf))
+      case meta: MetaNode =>
+
+        meta.setPointers()
+        val nextNodeId = meta.findPath(k)(comparator)
+
+        ctx.getNode(nextNodeId).flatMap(findLeaf(_, k)(comparator))
     }
   }
 
-  def findLeaf(k: Datom): Future[Option[DataNode]] = {
+  def findLeaf(k: Datom)(implicit comparator: Ordering[Datom]): Future[Option[DataNode]] = {
     ctx.root match {
       case None => Future.successful(None)
-      case Some(id) => ctx.getNode(id).flatMap(findLeaf(_, k))
+      case Some(id) => ctx.getNode(id).flatMap(findLeaf(_, k)(comparator))
+    }
+  }
+
+  def get(k: Datom)(implicit comparator: Ordering[Datom] = builder.ordering): Future[Option[Datom]] = {
+    //findLeaf(k)(comparator).map(_.flatMap(_.get(k)(comparator)))
+    findLeaf(k)(comparator).map{ node =>
+
+      val all = node.get.inOrder()
+
+      println(s"node: $node in the node: ${all.filter(x => x.e.compareTo(k.e) == 0)}")
+
+      node.flatMap(_.get(k)(comparator))
     }
   }
 
@@ -141,10 +159,39 @@ class Index(val builder: IndexBuilt) {
     }
   }
 
+  protected def splitDataNode(left: DataNode, data: Seq[Datom]): Future[Int] = {
+    val right = left.split()
+
+    val k = data(0)
+    val leftLast = left.lastKey
+    val rightLast = right.lastKey
+
+    var list = data
+
+    // Avoids searching for the path again! :)
+    if(builder.ordering.gt(k, leftLast)){
+
+      if(!builder.ordering.gt(k, rightLast)){
+        list = list.takeWhile{k => builder.ordering.lt(k, rightLast)}
+      }
+
+      return right.insert(list) match {
+        case Success(rn) => handleParent(left, right).map(_ => rn)
+        case Failure(ex) => Future.failed(ex)
+      }
+    }
+
+    left.insert(list.takeWhile{k => builder.ordering.lt(k, leftLast)}) match {
+      case Success(ln) => handleParent(left, right).map{_ => ln}
+      case Failure(ex) => Future.failed(ex)
+    }
+  }
+
   def insertDataNode(left: DataNode, list: Seq[Datom]): Future[Int] = {
     if(left.isFull){
-      val right = left.split()
-      return handleParent(left, right).map(_ => 0)
+      //val right = left.split()
+      //return handleParent(left, right).map(_ => 0)
+      return splitDataNode(left, list)
     }
 
     left.insert(list) match {
@@ -166,12 +213,12 @@ class Index(val builder: IndexBuilt) {
       val k = list(0)
 
       findLeaf(k).flatMap {
-        case None => insertEmpty(list) match {
+        case None =>
+          insertEmpty(list) match {
           case Failure(ex) => Future.failed(ex)
           case Success(n) => Future.successful(n)
         }
         case Some(leaf) =>
-
           val idx = list.indexWhere{d => ordering.gt(d, leaf.lastKey)}
           if(idx > 0) list = list.slice(0, idx)
 

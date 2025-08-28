@@ -29,16 +29,14 @@ object Demo2 {
     val storage = new MemoryStorage()
 
     val builder = IndexBuilder
-      .builder(2048, global)
+      .builder(4096, global)
       .storage(storage)
       .build()
 
     val allData = TrieMap.empty[Datom, Datom]
     val index = new Index(builder)
 
-    val t0 = System.nanoTime()
-
-    for(j<-0 until 100){
+    for(j<-0 until 1_00){
 
       var data = Seq.empty[Datom]
       val tmp = timecounter.getAndIncrement()//System.nanoTime()
@@ -58,7 +56,11 @@ object Demo2 {
 
       println(s"insertion nbr: ${j}...")
 
+      TimeProfiler.snap()
       val insertion = Await.result(index.insert(data), Duration.Inf)
+      TimeProfiler.snap()
+
+      //TimeProfiler.addAndGet(t1 - t0)
 
       assert(insertion > 0L)
     }
@@ -67,8 +69,7 @@ object Demo2 {
 
     //val list1 = data.sorted(builder.ordering)
 
-    val t1 = System.nanoTime()
-    val elapsedInsertion = (t1 - t0)/1_000_000
+    val elapsedInsertion = TimeProfiler.calculate()/1_000_000
 
     println(s"insertion: ${elapsedInsertion} ms")
 
@@ -82,6 +83,18 @@ object Demo2 {
   //  val equal = list2 == list1
 
     println(s"inorder: ${elapsedInOrder} ms")
+
+    val head = list2.head
+
+    val r = Await.result(index.get(head.copy(a = "owns"))(comparator), Duration.Inf)
+
+    println(s"time elapsed ${TimeCounter.get()/1_000_000_000.0} s")
+
+    /*val node = index.ctx.newBlocksReferences.filter(_._2.isInstanceOf[MetaNode]).head._2.asInstanceOf[MetaNode]
+    val buffer = builder.serializer.serialize(node)
+    val dnode = builder.serializer.deserialize(buffer).get.asInstanceOf[MetaNode]
+
+    assert(dnode.inOrder() == node.inOrder())*/
 
     println()
   }

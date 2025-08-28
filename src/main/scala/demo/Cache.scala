@@ -1,0 +1,7 @@
+package demo
+
+trait Cache {
+
+
+
+}

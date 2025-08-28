@@ -10,9 +10,9 @@ trait Node {
   def copy()(implicit ctx: IndexContext): Node
   def split()(implicit ctx: IndexContext): Node
 
-  def length: Int = 0
+  def length: Int
   def remaning: Int = MAX - length
-  def isFull: Boolean = length == MAX
+  def isFull: Boolean = length >= MAX
   def isEmpty: Boolean = length == 0
 
   var isNew: Boolean = true

@@ -12,20 +12,20 @@ class MetaNode(val id: String)(val builder: IndexBuilt) extends Node {
 
   var links = Array.empty[(Datom, String)]
 
-  def binSearch(k: Datom, start: Int = 0, end: Int = links.length - 1): (Boolean, Int) = {
+  def binSearch(k: Datom, start: Int = 0, end: Int = links.length - 1)(implicit comparator: Ordering[Datom]): (Boolean, Int) = {
     if(start > end) return false -> start
 
     val pos = start + (end - start)/2
     val c = ordering.compare(k, links(pos)._1)
 
     if(c == 0) return true -> pos
-    if(c < 0) return binSearch(k, start, pos - 1)
+    if(c < 0) return binSearch(k, start, pos - 1)(comparator)
 
-    binSearch(k, pos + 1, end)
+    binSearch(k, pos + 1, end)(comparator)
   }
 
-  def findPath(k: Datom): String = {
-    val (_, pos) = binSearch(k)
+  def findPath(k: Datom)(implicit comparator: Ordering[Datom]): String = {
+    val (_, pos) = binSearch(k)(comparator)
     val idx = if(pos < links.length) pos else pos - 1
     links(idx)._2
   }
@@ -43,10 +43,8 @@ class MetaNode(val id: String)(val builder: IndexBuilt) extends Node {
   }
 
   def insert(list: Seq[(Datom, String)])(implicit ctx: IndexContext): Try[Int] = {
-    if(isFull) return Failure(new RuntimeException("Data Node is full!"))
-
-    val existing = list.filter(links.contains(_))
-    if (!existing.isEmpty) return Failure(new RuntimeException(s"Elements already exist in this node: ${existing}"))
+    //val existing = list.filter(links.contains(_))
+    //if (!existing.isEmpty) return Failure(new RuntimeException(s"Elements already exist in this node: ${existing}"))
 
     val size = Math.min(list.length, remaning)
     val slice = list.slice(0, size)
@@ -84,4 +82,7 @@ class MetaNode(val id: String)(val builder: IndexBuilt) extends Node {
 
   override def lastKey: Datom = links.last._1
 
+  override def length: Int = links.length
+
+  def inOrder(): Seq[(Datom, String)] = links
 }

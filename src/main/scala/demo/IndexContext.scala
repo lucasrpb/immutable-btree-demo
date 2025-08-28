@@ -5,6 +5,7 @@ import demo.IndexBuilder.IndexBuilt
 import java.util.UUID
 import scala.collection.concurrent.TrieMap
 import scala.concurrent.Future
+import scala.util.{Failure, Success}
 
 class IndexContext(val builder: IndexBuilt) {
   import builder._
@@ -21,7 +22,10 @@ class IndexContext(val builder: IndexBuilt) {
 
     if(opt.isDefined) return Future.successful(opt.get)
 
-    storage.get(id).map(_.get)
+    storage.get(id).map(builder.serializer.deserialize(_)).flatMap {
+      case Success(node) => Future.successful(node)
+      case Failure(ex) => Future.failed(ex)
+    }
   }
 
   def getDataNode(id: String): Future[DataNode] = getNode(id).map(_.asInstanceOf[DataNode])

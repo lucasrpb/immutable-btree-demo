@@ -9,6 +9,8 @@ object IndexBuilder {
     val MAX: Int = order
 
     implicit val ordering: Ordering[Datom] = demo.ordering
+
+    val serializer = new Serializers.NodeSerializer(this)
   }
 
   protected class IndexBuilder(val order: Int, val ec: ExecutionContext) {
