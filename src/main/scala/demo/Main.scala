@@ -24,9 +24,9 @@ object Main {
     var data = TrieMap.empty[Int, Int]
     val id = "demo"
 
-    TimeProfiler.snap()
+    //TimeProfiler.snap()
 
-    for(i <- 0 until 1_00){
+    for(i <- 0 until 1_000){
 
       val ctx = Await.result(storage.getIndex(id), Duration.Inf).getOrElse(SerializableIndexContext.of(id, None))
       val index = new Index[Int](ctx)(builder)
@@ -40,7 +40,10 @@ object Main {
 
       val toInsert = scala.util.Random.shuffle(list)
 
-      val result = Await.result(index.insert(toInsert).flatMap(r => index.ctx.save().map(_ -> r)), Duration.Inf)
+      TimeProfiler.snap()
+      val result = Await.result(index.insert(toInsert).flatMap { r =>
+        TimeProfiler.snap()
+        index.ctx.save().map(_ -> r)}, Duration.Inf)
 
       if(result._2 != toInsert.length){
         assert(false)
@@ -51,7 +54,7 @@ object Main {
       println(s"${Console.GREEN_B}insertion: "+i+s"${Console.RESET}")
     }
 
-    TimeProfiler.snap()
+    //TimeProfiler.snap()
 
     println("insertion finished...")
 
