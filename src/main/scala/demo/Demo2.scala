@@ -25,8 +25,6 @@ object Demo2 {
     }
 
     val storage = new MemoryStorage()
-
-    val ioThreadPool = Executors.newFixedThreadPool(10)
     //implicit val ioExecutionContext = ExecutionContext.fromExecutorService(ioThreadPool)
 
     val builder = IndexBuilder
@@ -35,7 +33,9 @@ object Demo2 {
       .build()
 
     val allData = TrieMap.empty[Datom, Datom]
-    val index = new DatomIndex(builder)
+    val index = new DatomIndex(SerializableIndexContext.of("datom-demo", None), builder)
+
+    val id = "demo-index"
 
     for(j<-0 until 1_000){
 

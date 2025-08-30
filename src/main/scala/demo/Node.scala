@@ -15,5 +15,5 @@ trait Node[K] {
   def isFull: Boolean = length >= MAX
   def isEmpty: Boolean = length == 0
 
-  var isNew: Boolean = true
+ // var isNew: Boolean = true
 }

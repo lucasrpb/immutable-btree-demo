@@ -57,7 +57,7 @@ class MetaNode[K](val id: String)(val builder: IndexBuilt[K]) extends Node[K] {
   }
 
   override def copy()(implicit ctx: IndexContext[K]): MetaNode[K] = {
-    if(isNew) return this
+    if(ctx.isNew(this)) return this
 
     val copy = ctx.createMetaNode()
 

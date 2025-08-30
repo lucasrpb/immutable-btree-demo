@@ -149,6 +149,11 @@ package object demo {
     }
   }
 
+  implicit val intSerializer: Serializer[Int] = new Serializer[Int] {
+    override def serialize(o: Int): Array[Byte] = ByteBuffer.allocate(4).putInt(o).flip().array()
+    override def deserialize(buffer: Array[Byte]): Try[Int] = Success(ByteBuffer.wrap(buffer).getInt)
+  }
+
   implicit val datomSerializer: Serializer[Datom] = new Serializer[Datom] {
     override def serialize(d: Datom): Array[Byte] = {
       com.google.protobuf.any.Any.pack(SerializableDatom.of(d.e, d.a, d.tpe match {

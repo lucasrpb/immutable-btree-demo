@@ -26,7 +26,10 @@ libraryDependencies ++= Seq(
 
   "org.apache.pekko" %% "pekko-actor-testkit-typed" % pekkoVersion % Test,
   "org.apache.pekko" %% "pekko-stream-testkit" % pekkoVersion % Test,
-  "org.scalatest" %% "scalatest" % "3.2.19" % Test
+  "org.scalatest" %% "scalatest" % "3.2.19" % Test,
+
+
+  "com.datastax.oss" % "java-driver-core" % "4.17.0"
 )
 
 enablePlugins(PekkoGrpcPlugin)

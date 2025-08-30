@@ -2,6 +2,7 @@ package demo
 
 import demo.IndexBuilder.IndexBuilt
 
+import java.util.UUID
 import java.util.concurrent.atomic.AtomicLong
 import scala.collection.concurrent.TrieMap
 import scala.concurrent.Future
@@ -9,12 +10,12 @@ import scala.reflect.ClassTag
 import scala.util.Try
 import scala.util.{Failure, Success}
 
-class Index[K: ClassTag](val builder: IndexBuilt[K]) {
+class Index[K: ClassTag](val context: SerializableIndexContext)(val builder: IndexBuilt[K]) {
 
   import builder._
   val $this = this
 
-  implicit val ctx: IndexContext[K] = new IndexContext[K](builder)
+  implicit val ctx: IndexContext[K] = new IndexContext[K](context, builder)
 
   def findLeaf(node: Node[K], k: K)(implicit comparator: Ordering[K]): Future[Option[DataNode[K]]] = {
     node match {
@@ -247,7 +248,7 @@ class Index[K: ClassTag](val builder: IndexBuilt[K]) {
 
       Future.successful(n.get())
     }
-
+    
     insert()
   }
 

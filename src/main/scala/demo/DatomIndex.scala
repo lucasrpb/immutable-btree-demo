@@ -3,7 +3,8 @@ package demo
 import scala.collection.concurrent.TrieMap
 import scala.concurrent.Future
 
-class DatomIndex(override val builder: IndexBuilder.IndexBuilt[Datom]) extends Index[Datom](builder){
+class DatomIndex(override val context: SerializableIndexContext,
+                 override val builder: IndexBuilder.IndexBuilt[Datom]) extends Index[Datom](context)(builder){
 
   import builder._
 

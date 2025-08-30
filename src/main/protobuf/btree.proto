@@ -33,4 +33,5 @@ message SerializableMetaNode {
 
 message SerializableIndexContext {
     string id = 1;
+    optional string root = 2;
 }

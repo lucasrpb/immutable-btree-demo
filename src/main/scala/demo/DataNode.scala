@@ -53,7 +53,7 @@ class DataNode[K: ClassTag](val id: String)(val builder: IndexBuilt[K]) extends 
   }*/
 
   override def copy()(implicit ctx: IndexContext[K]): DataNode[K] = {
-    if(isNew) return this
+    if(ctx.isNew(this)) return this
 
     val copy = ctx.createDataNode()
 
