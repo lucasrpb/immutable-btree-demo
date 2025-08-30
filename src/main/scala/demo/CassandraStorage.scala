@@ -18,7 +18,7 @@ class CassandraStorage() extends Storage {
 
   implicit val ec: ExecutionContext = ExecutionContext.fromExecutor(Executors.newWorkStealingPool())
 
-  println("✅ Connected to YugabyteDB CQL")
+  println("✅ Connected to Cassandra")
 
   // Create a keyspace
   session.execute(
@@ -35,9 +35,9 @@ class CassandraStorage() extends Storage {
   )
 
   // Create a table
-  session.execute(
+  /*session.execute(
     """TRUNCATE TABLE demo.blocks;""".stripMargin
-  )
+  )*/
 
   // Create a table
   session.execute(
@@ -47,10 +47,11 @@ class CassandraStorage() extends Storage {
       |)""".stripMargin
   )
 
+  /*
   // Create a table
   session.execute(
     """TRUNCATE TABLE demo.indexes;""".stripMargin
-  )
+  )*/
 
   override def get(id: String): Future[Array[Byte]] = {
     session.executeAsync(session.prepare("select * from demo.blocks where id = ?").bind(id)).asScala.map { result =>

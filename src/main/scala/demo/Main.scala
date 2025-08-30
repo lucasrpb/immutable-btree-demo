@@ -26,7 +26,7 @@ object Main {
 
     TimeProfiler.snap()
 
-    for(i <- 0 until 1_000){
+    for(i <- 0 until 1_00){
 
       val ctx = Await.result(storage.getIndex(id), Duration.Inf).getOrElse(SerializableIndexContext.of(id, None))
       val index = new Index[Int](ctx)(builder)
