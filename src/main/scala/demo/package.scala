@@ -1,9 +1,10 @@
 import com.google.common.base.Charsets
-import com.google.protobuf.ByteString
 import demo.IndexBuilder.IndexBuilt
-import com.google.protobuf.{any => protobufany}
+import com.google.protobuf.{ByteString, any => protobufany}
+
 import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicLong
+import scala.reflect.ClassTag
 import scala.util.{Failure, Success, Try}
 
 package object demo {
@@ -38,42 +39,25 @@ package object demo {
 
   object Serializers {
 
-    class NodeSerializer(builder: IndexBuilt) extends Serializer[Node] {
+    class NodeSerializer[K: ClassTag](builder: IndexBuilt[K]) extends Serializer[Node[K]] {
+      override def serialize(node: Node[K]): Array[Byte] = node match {
+        case dataNode: DataNode[K] => protobufany.Any.pack(SerializableDataNode.of(dataNode.id, "", dataNode.data
+          .map(k => ByteString.copyFrom(builder.keySerializer.serialize(k))))).toByteArray
 
-      override def serialize(node: Node): Array[Byte] = node match {
-        case dataNode: DataNode => protobufany.Any.pack(SerializableDataNode.of(dataNode.id, "", dataNode.data
-          .map(d => SerializableDatom.of(d.e, d.a, d.tpe match {
-            case DatomTypes.STRING => DatomTypeBytesConverters.stringToBytes(d.value.asInstanceOf[String])
-            case DatomTypes.NUMBER => DatomTypeBytesConverters.doubleToBytes(d.value.asInstanceOf[Double])
-            case DatomTypes.BOOLEAN => DatomTypeBytesConverters.booleanToBytes(d.value.asInstanceOf[Boolean])
-            case _ => throw new RuntimeException(s"no converter found for data node ${dataNode.id}!")
-          }, d.t, d.valid, d.tpe)))).toByteArray
-
-        case metaNode: MetaNode => protobufany.Any.pack(SerializableMetaNode.of(metaNode.id, "", metaNode.links
-          .map { case (d, link) => SerializableLink.of(Some(SerializableDatom.of(d.e, d.a,
-            d.tpe match {
-              case DatomTypes.STRING => DatomTypeBytesConverters.stringToBytes(d.value.asInstanceOf[String])
-              case DatomTypes.NUMBER => DatomTypeBytesConverters.doubleToBytes(d.value.asInstanceOf[Double])
-              case DatomTypes.BOOLEAN => DatomTypeBytesConverters.booleanToBytes(d.value.asInstanceOf[Boolean])
-              case _ => throw new RuntimeException(s"no converter found for meta node ${metaNode.id}!")
-            }, d.t, d.valid, d.tpe)), link)
+        case metaNode: MetaNode[K] => protobufany.Any.pack(SerializableMetaNode.of(metaNode.id, "", metaNode.links
+          .map { case (k, link) => SerializableLink.of(ByteString.copyFrom(builder.keySerializer.serialize(k)), link)
           })).toByteArray
       }
 
-      override def deserialize(buffer: Array[Byte]): Try[Node] = {
+      override def deserialize(buffer: Array[Byte]): Try[Node[K]] = {
         val parsed = protobufany.Any.parseFrom(buffer)
 
         if(parsed.is(SerializableDataNode)){
           val dataNode = parsed.unpack(SerializableDataNode)
-          val node = new DataNode(dataNode.id)(builder)
+          val node = new DataNode[K](dataNode.id)(builder)
 
-          node.data = dataNode.data.map { sd =>
-            Datom(sd.e, sd.a, sd.tpe, sd.tpe match {
-              case DatomTypes.STRING => sd.v.toStringUtf8.asInstanceOf[Any]
-              case DatomTypes.NUMBER => sd.v.asReadOnlyByteBuffer().getDouble.asInstanceOf[Any]
-              case DatomTypes.BOOLEAN => (if(sd.v.asReadOnlyByteBuffer().get().toInt <= 0)
-                false else true).asInstanceOf[Any]
-            }, sd.t, sd.valid)
+          node.data = dataNode.data.map { sk =>
+            builder.keySerializer.deserialize(sk.toByteArray).get
           }.toIndexedSeq
 
           return Success(node)
@@ -84,15 +68,10 @@ package object demo {
           val node = new MetaNode(dataNode.id)(builder)
 
           node.links = dataNode.links.map { slink =>
-            val sd = slink.key.get
+            val k = slink.key
             val link = slink.link
 
-            Datom(sd.e, sd.a, sd.tpe, sd.tpe match {
-              case DatomTypes.STRING => sd.v.toStringUtf8.asInstanceOf[Any]
-              case DatomTypes.NUMBER => sd.v.asReadOnlyByteBuffer().getDouble.asInstanceOf[Any]
-              case DatomTypes.BOOLEAN => (if(sd.v.asReadOnlyByteBuffer().get().toInt <= 0)
-                false else true).asInstanceOf[Any]
-            }, sd.t, sd.valid) -> link
+            builder.keySerializer.deserialize(k.toByteArray).get -> link
           }.toArray
 
           return Success(node)
@@ -167,6 +146,30 @@ package object demo {
       }
 
       comp
+    }
+  }
+
+  implicit val datomSerializer: Serializer[Datom] = new Serializer[Datom] {
+    override def serialize(d: Datom): Array[Byte] = {
+      com.google.protobuf.any.Any.pack(SerializableDatom.of(d.e, d.a, d.tpe match {
+        case DatomTypes.STRING => DatomTypeBytesConverters.stringToBytes(d.value.asInstanceOf[String])
+        case DatomTypes.NUMBER => DatomTypeBytesConverters.doubleToBytes(d.value.asInstanceOf[Double])
+        case DatomTypes.BOOLEAN => DatomTypeBytesConverters.booleanToBytes(d.value.asInstanceOf[Boolean])
+        case _ => throw new RuntimeException(s"no converter found for type ${d.tpe}!")
+      }, d.t, d.valid, d.tpe)).toByteArray
+    }
+
+    override def deserialize(buffer: Array[Byte]): Try[Datom] = {
+      val sd = com.google.protobuf.any.Any.parseFrom(buffer).unpack(SerializableDatom)
+
+      Success(
+        Datom(sd.e, sd.a, sd.tpe, sd.tpe match {
+          case DatomTypes.STRING => sd.v.toStringUtf8.asInstanceOf[Any]
+          case DatomTypes.NUMBER => sd.v.asReadOnlyByteBuffer().getDouble.asInstanceOf[Any]
+          case DatomTypes.BOOLEAN => (if (sd.v.asReadOnlyByteBuffer().get().toInt <= 0)
+            false else true).asInstanceOf[Any]
+        }, sd.t, sd.valid)
+      )
     }
   }
 

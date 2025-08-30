@@ -5,9 +5,10 @@ import demo.IndexBuilder.IndexBuilt
 import java.util.UUID
 import scala.collection.concurrent.TrieMap
 import scala.concurrent.Future
+import scala.reflect.ClassTag
 import scala.util.{Failure, Success}
 
-class IndexContext(val builder: IndexBuilt) {
+class IndexContext[K: ClassTag](val builder: IndexBuilt[K]) {
   import builder._
 
   var root: Option[String] = None
@@ -15,9 +16,9 @@ class IndexContext(val builder: IndexBuilt) {
   val parents = TrieMap.empty[String, Option[(String, Int)]]
   var levels = 0
 
-  val newBlocksReferences = TrieMap.empty[String, Node]
+  val newBlocksReferences = TrieMap.empty[String, Node[K]]
 
-  def getNode(id: String): Future[Node] = {
+  def getNode(id: String): Future[Node[K]] = {
     val opt = newBlocksReferences.get(id)
 
     if(opt.isDefined) return Future.successful(opt.get)
@@ -28,11 +29,11 @@ class IndexContext(val builder: IndexBuilt) {
     }
   }
 
-  def getDataNode(id: String): Future[DataNode] = getNode(id).map(_.asInstanceOf[DataNode])
-  def getMetaNode(id: String): Future[MetaNode] = getNode(id).map(_.asInstanceOf[MetaNode])
+  def getDataNode(id: String): Future[DataNode[K]] = getNode(id).map(_.asInstanceOf[DataNode[K]])
+  def getMetaNode(id: String): Future[MetaNode[K]] = getNode(id).map(_.asInstanceOf[MetaNode[K]])
 
-  def createDataNode(): DataNode = {
-    val node = new DataNode(id = UUID.randomUUID().toString)(builder)
+  def createDataNode(): DataNode[K] = {
+    val node = new DataNode[K](id = UUID.randomUUID().toString)(builder)
     parents.put(node.id, None)
     newBlocksReferences.put(node.id, node)
     node
@@ -48,8 +49,8 @@ class IndexContext(val builder: IndexBuilt) {
     levels
   }
 
-  def createMetaNode(): MetaNode = {
-    val node = new MetaNode(id = UUID.randomUUID().toString)(builder)
+  def createMetaNode(): MetaNode[K] = {
+    val node = new MetaNode[K](id = UUID.randomUUID().toString)(builder)
     parents.put(node.id, None)
     newBlocksReferences.put(node.id, node)
     node

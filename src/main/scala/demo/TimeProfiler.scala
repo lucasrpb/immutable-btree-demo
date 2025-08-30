@@ -11,7 +11,11 @@ object TimeProfiler {
     if(t0.isEmpty){
       t0 = Some(System.nanoTime())
     } else {
-      timer.addAndGet(System.nanoTime() - t0.get)
+      val elapsed = System.nanoTime() - t0.get
+
+      println(s"elapsed: ${elapsed}")
+
+      timer.addAndGet(elapsed)
       t0 = None
     }
   }

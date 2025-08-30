@@ -3,16 +3,16 @@ package demo
 import demo.IndexBuilder.IndexBuilt
 import scala.util.{Failure, Success, Try}
 
-class MetaNode(val id: String)(val builder: IndexBuilt) extends Node {
+class MetaNode[K](val id: String)(val builder: IndexBuilt[K]) extends Node[K] {
 
   import builder._
 
   override val MIN: Int = builder.MIN
   override val MAX: Int = builder.MAX
 
-  var links = Array.empty[(Datom, String)]
+  var links = Array.empty[(K, String)]
 
-  def binSearch(k: Datom, start: Int = 0, end: Int = links.length - 1)(implicit comparator: Ordering[Datom]): (Boolean, Int) = {
+  def binSearch(k: K, start: Int = 0, end: Int = links.length - 1)(implicit comparator: Ordering[K]): (Boolean, Int) = {
     if(start > end) return false -> start
 
     val pos = start + (end - start)/2
@@ -24,25 +24,25 @@ class MetaNode(val id: String)(val builder: IndexBuilt) extends Node {
     binSearch(k, pos + 1, end)(comparator)
   }
 
-  def findPath(k: Datom)(implicit comparator: Ordering[Datom]): String = {
+  def findPath(k: K)(implicit comparator: Ordering[K]): String = {
     val (_, pos) = binSearch(k)(comparator)
     val idx = if(pos < links.length) pos else pos - 1
     links(idx)._2
   }
 
-  def setPointer(node: Node, pos: Int)(implicit ctx: IndexContext): Unit = {
+  def setPointer(node: Node[K], pos: Int)(implicit ctx: IndexContext[K]): Unit = {
     links(pos) = node.lastKey -> node.id
     ctx.setParent(node.id, Some(id -> pos))
   }
 
-  def setPointers()(implicit ctx: IndexContext): Unit = {
+  def setPointers()(implicit ctx: IndexContext[K]): Unit = {
     for(i<-0 until links.length){
       val (k, c) = links(i)
       ctx.setParent(c, Some(id -> i))
     }
   }
 
-  def insert(list: Seq[(Datom, String)])(implicit ctx: IndexContext): Try[Int] = {
+  def insert(list: Seq[(K, String)])(implicit ctx: IndexContext[K]): Try[Int] = {
     //val existing = list.filter(links.contains(_))
     //if (!existing.isEmpty) return Failure(new RuntimeException(s"Elements already exist in this node: ${existing}"))
 
@@ -56,7 +56,7 @@ class MetaNode(val id: String)(val builder: IndexBuilt) extends Node {
     Success(size)
   }
 
-  override def copy()(implicit ctx: IndexContext): MetaNode = {
+  override def copy()(implicit ctx: IndexContext[K]): MetaNode[K] = {
     if(isNew) return this
 
     val copy = ctx.createMetaNode()
@@ -68,7 +68,7 @@ class MetaNode(val id: String)(val builder: IndexBuilt) extends Node {
     copy
   }
 
-  override def split()(implicit ctx: IndexContext): MetaNode = {
+  override def split()(implicit ctx: IndexContext[K]): MetaNode[K] = {
     val right = ctx.createMetaNode()
 
     right.links = links.slice(links.length / 2, length)
@@ -80,9 +80,9 @@ class MetaNode(val id: String)(val builder: IndexBuilt) extends Node {
     right
   }
 
-  override def lastKey: Datom = links.last._1
+  override def lastKey: K = links.last._1
 
   override def length: Int = links.length
 
-  def inOrder(): Seq[(Datom, String)] = links
+  def inOrder(): Seq[(K, String)] = links
 }

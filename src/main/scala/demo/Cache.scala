@@ -2,6 +2,4 @@ package demo
 
 trait Cache {
 
-
-
 }

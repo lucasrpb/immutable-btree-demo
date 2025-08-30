@@ -5,21 +5,22 @@ import demo.IndexBuilder.IndexBuilt
 import java.util.concurrent.atomic.AtomicLong
 import scala.collection.concurrent.TrieMap
 import scala.concurrent.Future
+import scala.reflect.ClassTag
 import scala.util.Try
 import scala.util.{Failure, Success}
 
-class Index(val builder: IndexBuilt) {
+class Index[K: ClassTag](val builder: IndexBuilt[K]) {
 
   import builder._
   val $this = this
 
-  implicit val ctx: IndexContext = new IndexContext(builder)
+  implicit val ctx: IndexContext[K] = new IndexContext[K](builder)
 
-  def findLeaf(node: Node, k: Datom)(implicit comparator: Ordering[Datom]): Future[Option[DataNode]] = {
+  def findLeaf(node: Node[K], k: K)(implicit comparator: Ordering[K]): Future[Option[DataNode[K]]] = {
     node match {
-      case leaf: DataNode =>
+      case leaf: DataNode[K] =>
         Future.successful(Some(leaf))
-      case meta: MetaNode =>
+      case meta: MetaNode[K] =>
 
         meta.setPointers()
         val nextNodeId = meta.findPath(k)(comparator)
@@ -28,28 +29,16 @@ class Index(val builder: IndexBuilt) {
     }
   }
 
-  def findLeaf(k: Datom)(implicit comparator: Ordering[Datom]): Future[Option[DataNode]] = {
+  def findLeaf(k: K)(implicit comparator: Ordering[K]): Future[Option[DataNode[K]]] = {
     ctx.root match {
       case None => Future.successful(None)
       case Some(id) => ctx.getNode(id).flatMap(findLeaf(_, k)(comparator))
     }
   }
 
-  def get(k: Datom)(implicit comparator: Ordering[Datom] = builder.ordering): Future[Option[Datom]] = {
-    //findLeaf(k)(comparator).map(_.flatMap(_.get(k)(comparator)))
-    findLeaf(k)(comparator).map{ node =>
-
-      val all = node.get.inOrder()
-
-      println(s"node: $node in the node: ${all.filter(x => x.e.compareTo(k.e) == 0)}")
-
-      node.flatMap(_.get(k)(comparator))
-    }
-  }
-
-  protected def fixRoot(p: Node): Future[Boolean] = {
+  protected def fixRoot(p: Node[K]): Future[Boolean] = {
     p match {
-      case p: MetaNode =>
+      case p: MetaNode[K] =>
 
         if(p.length == 1){
           val c = p.links(0)._2
@@ -73,7 +62,7 @@ class Index(val builder: IndexBuilt) {
           Future.successful(true)
         }
 
-      case p: DataNode =>
+      case p: DataNode[K] =>
         ctx.root = Some(p.id)
         ctx.setParent(p.id, None)
 
@@ -81,7 +70,7 @@ class Index(val builder: IndexBuilt) {
     }
   }
 
-  protected def recursiveCopy(node: Node): Future[Boolean] = {
+  protected def recursiveCopy(node: Node[K]): Future[Boolean] = {
     ctx.parents(node.id) match {
       case None => fixRoot(node)
       case Some((pid, pos)) => ctx.getMetaNode(pid).flatMap { p =>
@@ -97,17 +86,16 @@ class Index(val builder: IndexBuilt) {
     }
   }
 
-  def insertEmpty(list: Seq[Datom]): Try[Int] = {
+  def insertEmpty(list: Seq[K]): Try[Int] = {
     val leaf = ctx.createDataNode()
 
     ctx.root = Some(leaf.id)
-    ctx.numElements += 1L
     ctx.incrementLevels()
 
     leaf.insert(list)
   }
 
-  protected def insertParent(left: MetaNode, prev: Node): Future[Int] = {
+  protected def insertParent(left: MetaNode[K], prev: Node[K]): Future[Int] = {
     if(left.isFull){
       val right = left.split()
 
@@ -130,7 +118,7 @@ class Index(val builder: IndexBuilt) {
     }
   }
 
-  protected def handleParent(left: Node, right: Node): Future[Int] = {
+  protected def handleParent(left: Node[K], right: Node[K]): Future[Int] = {
     val parent = ctx.parents(left.id)
 
     parent match {
@@ -159,7 +147,7 @@ class Index(val builder: IndexBuilt) {
     }
   }
 
-  protected def splitDataNode(left: DataNode, data: Seq[Datom]): Future[Int] = {
+  protected def splitDataNode(left: DataNode[K], data: Seq[K]): Future[Int] = {
     val right = left.split()
 
     val k = data(0)
@@ -187,7 +175,7 @@ class Index(val builder: IndexBuilt) {
     }
   }
 
-  def insertDataNode(left: DataNode, list: Seq[Datom]): Future[Int] = {
+  def insertDataNode(left: DataNode[K], list: Seq[K]): Future[Int] = {
     if(left.isFull){
       //val right = left.split()
       //return handleParent(left, right).map(_ => 0)
@@ -200,7 +188,8 @@ class Index(val builder: IndexBuilt) {
     }
   }
 
-  protected def insertOrdered(list: Seq[Datom]): Future[Long] = {
+  protected def insertOrdered(list: Seq[K]): Future[Long] = {
+
     val sorted = list.sorted
 
     val length: Int = list.length
@@ -212,14 +201,23 @@ class Index(val builder: IndexBuilt) {
       var list = sorted.slice(pos, length)
       val k = list(0)
 
+      TimeProfiler.snap()
+
       findLeaf(k).flatMap {
         case None =>
+
+          TimeProfiler.snap()
+
+
           insertEmpty(list) match {
           case Failure(ex) => Future.failed(ex)
           case Success(n) => Future.successful(n)
         }
         case Some(leaf) =>
-          val idx = list.indexWhere{d => ordering.gt(d, leaf.lastKey)}
+
+          TimeProfiler.snap()
+
+         val idx = list.indexWhere{d => ordering.gt(d, leaf.lastKey)}
           if(idx > 0) list = list.slice(0, idx)
 
           insertDataNode(leaf.copy(), list)
@@ -233,7 +231,7 @@ class Index(val builder: IndexBuilt) {
     insert()
   }
 
-  def insert(list: Seq[Datom]): Future[Long] = {
+  def insert(list: Seq[K]): Future[Long] = {
     val it = list.grouped(MAX)
     val n = new AtomicLong(0L)
 
@@ -253,28 +251,28 @@ class Index(val builder: IndexBuilt) {
     insert()
   }
 
-  protected def inOrder(root: Node): Future[Seq[Datom]] = {
+  protected def inOrder(root: Node[K]): Future[Seq[K]] = {
     root match {
-      case leaf: DataNode => Future.successful(leaf.inOrder())
-      case meta: MetaNode => Future.sequence(meta.links.map { case (k, link) =>
+      case leaf: DataNode[K] => Future.successful(leaf.inOrder())
+      case meta: MetaNode[K] => Future.sequence(meta.links.map { case (k, link) =>
         ctx.getNode(link).flatMap(inOrder(_))
       }.toSeq).map(_.flatten)
     }
   }
 
-  def inOrder(): Future[Seq[Datom]] = {
+  def inOrder(): Future[Seq[K]] = {
     ctx.root match {
-      case None => Future.successful(Seq.empty[Datom])
+      case None => Future.successful(Seq.empty[K])
       case Some(root) => ctx.getNode(root).flatMap(inOrder(_))
     }
   }
 
-  def getLeftMost(start: Option[Node]): Future[Option[DataNode]] = {
+  def getLeftMost(start: Option[Node[K]]): Future[Option[DataNode[K]]] = {
     start match {
       case None => Future.successful(None)
       case Some(b) => b match {
-        case b: DataNode => Future.successful(Some(b))
-        case b: MetaNode =>
+        case b: DataNode[K] => Future.successful(Some(b))
+        case b: MetaNode[K] =>
 
           b.setPointers()
 
@@ -283,12 +281,12 @@ class Index(val builder: IndexBuilt) {
     }
   }
 
-  def getRightMost(start: Option[Node]): Future[Option[DataNode]] = {
+  def getRightMost(start: Option[Node[K]]): Future[Option[DataNode[K]]] = {
     start match {
       case None => Future.successful(None)
       case Some(b) => b match {
-        case b: DataNode => Future.successful(Some(b))
-        case b: MetaNode =>
+        case b: DataNode[K] => Future.successful(Some(b))
+        case b: MetaNode[K] =>
 
           b.setPointers()
 
@@ -297,7 +295,7 @@ class Index(val builder: IndexBuilt) {
     }
   }
 
-  def first(): Future[Option[DataNode]] = {
+  def first(): Future[Option[DataNode[K]]] = {
     if(ctx.root.isEmpty) return Future.successful(None)
 
     val root = ctx.root.get
@@ -308,7 +306,7 @@ class Index(val builder: IndexBuilt) {
     }
   }
 
-  def last(): Future[Option[DataNode]] = {
+  def last(): Future[Option[DataNode[K]]] = {
     if(ctx.root.isEmpty) return Future.successful(None)
 
     val root = ctx.root.get
@@ -319,9 +317,9 @@ class Index(val builder: IndexBuilt) {
     }
   }
 
-  def next(current: Option[String]): Future[Option[DataNode]] = {
+  def next(current: Option[String]): Future[Option[DataNode[K]]] = {
 
-    def nxt(b: Node): Future[Option[DataNode]] = {
+    def nxt(b: Node[K]): Future[Option[DataNode[K]]] = {
 
       val opt = ctx.parents(b.id)
 
@@ -349,9 +347,9 @@ class Index(val builder: IndexBuilt) {
     }
   }
 
-  def prev(current: Option[String]): Future[Option[DataNode]] = {
+  def prev(current: Option[String]): Future[Option[DataNode[K]]] = {
 
-    def prv(b: Node): Future[Option[DataNode]] = {
+    def prv(b: Node[K]): Future[Option[DataNode[K]]] = {
 
       val opt = ctx.parents(b.id)
 
@@ -375,21 +373,20 @@ class Index(val builder: IndexBuilt) {
     }
   }
 
-  def inOrder(f: Datom => Boolean = _ => true): AsyncIndexIterator[Seq[Datom]] = new RichAsyncIndexIterator[Datom](f) {
-
+  def inOrder(f: K => Boolean = _ => true): AsyncIndexIterator[Seq[K]] = new RichAsyncIndexIterator[K](f) {
     override def hasNext(): Future[Boolean] = {
-      if(!firstTime) return Future.successful(ctx.root.isDefined)
+      if (!firstTime) return Future.successful(ctx.root.isDefined)
       Future.successful(cur.isDefined)
     }
 
-    override def next(): Future[Seq[Datom]] = {
-      if(!firstTime){
+    override def next(): Future[Seq[K]] = {
+      if (!firstTime) {
         firstTime = true
 
         return first().map {
           case None =>
             cur = None
-            Seq.empty[Datom]
+            Seq.empty[K]
 
           case Some(b) =>
             cur = Some(b)
@@ -400,7 +397,7 @@ class Index(val builder: IndexBuilt) {
       $this.next(cur.map(_.id)).map {
         case None =>
           cur = None
-          Seq.empty[Datom]
+          Seq.empty[K]
 
         case Some(b) =>
           cur = Some(b)
@@ -409,80 +406,14 @@ class Index(val builder: IndexBuilt) {
     }
   }
 
-  def all(it: AsyncIndexIterator[Seq[Datom]] = inOrder()): Future[Seq[Datom]] = {
+  def all(it: AsyncIndexIterator[Seq[K]] = inOrder()): Future[Seq[K]] = {
     it.hasNext().flatMap {
       case true => it.next().flatMap { list =>
         all(it).map {
           list ++ _
         }
       }
-      case false => Future.successful(Seq.empty[Datom])
+      case false => Future.successful(Seq.empty[K])
     }
   }
-
-  def inOrder2(t: Long = Long.MaxValue, f: Datom => Boolean = _ => true): AsyncIndexIterator[Seq[Datom]] =
-    new RichAsyncIndexIterator[Datom](f) {
-
-      var lastKey: Option[Datom] = None
-
-      protected def filterDatoms(datoms: IndexedSeq[Datom]): Seq[Datom] = {
-        if(datoms.isEmpty) {
-          if(lastKey.isEmpty) IndexedSeq.empty[Datom] else IndexedSeq(lastKey.get)
-        }
-
-        val grouped = TrieMap.from(datoms.groupBy{d => (d.e, d.a, d.value)}.map { case (k, values) =>
-          k -> values.sortBy(_.t)
-        })
-
-        if(lastKey.isDefined && grouped.isDefinedAt((lastKey.get.e, lastKey.get.a, lastKey.get.value))){
-          val k = (lastKey.get.e, lastKey.get.a, lastKey.get.value)
-          grouped.put(k, (grouped(k) :+ lastKey.get).sortBy(_.t))
-        } else if(lastKey.isDefined){
-          grouped.put((lastKey.get.e, lastKey.get.a, lastKey.get.value), IndexedSeq(lastKey.get))
-        }
-
-        val curLast = datoms.last
-
-        grouped.remove((curLast.e, curLast.a, curLast.value))
-
-        lastKey = Some(curLast)
-
-        grouped.map{case (_, values) => values.last}.filter(_.valid).toSeq.sorted(builder.ordering)
-      }
-
-      override def hasNext(): Future[Boolean] = {
-        if(!firstTime) return Future.successful(ctx.root.isDefined)
-        Future.successful(cur.isDefined)
-      }
-
-      override def next(): Future[Seq[Datom]] = {
-        if(!firstTime){
-          firstTime = true
-
-          return first().map {
-            case None =>
-              cur = None
-              IndexedSeq.empty[Datom]
-
-            case Some(b) =>
-              cur = Some(b)
-              val filtered = b.data.filter(f)
-              filterDatoms(filtered.filter(_.t <= t).toIndexedSeq)
-          }
-        }
-
-        $this.next(cur.map(_.id)).map {
-          case None =>
-            cur = None
-            if(lastKey.isEmpty) IndexedSeq.empty[Datom] else IndexedSeq(lastKey.get)
-
-          case Some(b) =>
-            cur = Some(b)
-            val filtered = b.data.filter(f)
-            filterDatoms(filtered.filter(_.t <= t).toIndexedSeq)
-        }
-      }
-    }
-
-
 }

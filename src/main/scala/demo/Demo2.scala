@@ -1,10 +1,10 @@
 package demo
 
 import java.util.UUID
-import java.util.concurrent.ThreadLocalRandom
+import java.util.concurrent.{ExecutorService, Executors, ThreadLocalRandom}
 import java.util.concurrent.atomic.AtomicLong
 import scala.collection.concurrent.TrieMap
-import scala.concurrent.Await
+import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration.Duration
 
@@ -24,22 +24,23 @@ object Demo2 {
       "iphone-"+i
     }
 
-    // val datoms = data.map(caseClassToDatom(_))
-
     val storage = new MemoryStorage()
 
+    val ioThreadPool = Executors.newFixedThreadPool(10)
+    //implicit val ioExecutionContext = ExecutionContext.fromExecutorService(ioThreadPool)
+
     val builder = IndexBuilder
-      .builder(4096, global)
+      .builder[Datom](1024, global, datomSerializer, ordering)
       .storage(storage)
       .build()
 
     val allData = TrieMap.empty[Datom, Datom]
-    val index = new Index(builder)
+    val index = new DatomIndex(builder)
 
-    for(j<-0 until 1_00){
+    for(j<-0 until 1_000){
 
       var data = Seq.empty[Datom]
-      val tmp = timecounter.getAndIncrement()//System.nanoTime()
+      val tmp = timecounter.getAndIncrement() //System.nanoTime()
 
       for(i<-0 until 1_000){
         val id = UUID.randomUUID().toString
@@ -60,9 +61,13 @@ object Demo2 {
 
       println(s"insertion nbr: ${j}...")
 
-      TimeProfiler.snap()
+      //TimeProfiler.snap()
       val insertion = Await.result(index.insert(data), Duration.Inf)
-      TimeProfiler.snap()
+      //TimeProfiler.snap()
+
+      data.foreach { d =>
+        allData.put(d, d)
+      }
 
       //TimeProfiler.addAndGet(t1 - t0)
 
@@ -71,34 +76,26 @@ object Demo2 {
 
     println("filled...")
 
-    //val list1 = data.sorted(builder.ordering)
+    val t = 1L
+
+    val list1 = allData.values.toSeq
+      .filter(_.t <= t).filter(_.valid)
+      .sorted(ordering)
 
     val elapsedInsertion = TimeProfiler.calculate()/1_000_000
 
     println(s"insertion: ${elapsedInsertion} ms")
 
     val t2 = System.nanoTime()
-    val list2 = Await.result(index.all(index.inOrder2()), Duration.Inf)
+    val list2 = Await.result(index.all(index.inOrder2(t)), Duration.Inf)
     val t3 = System.nanoTime()
     val elapsedInOrder = (t3 - t2)/1_000_000
 
-    val list3 = Await.result(index.all(index.inOrder2(50)), Duration.Inf)
+    println(s"inorder: ${elapsedInOrder} ms levels: ${index.ctx.levels}")
 
-  //  val equal = list2 == list1
-
-    println(s"inorder: ${elapsedInOrder} ms")
-
-    val head = list2.head
-
-    val r = Await.result(index.get(head.copy(a = "owns"))(comparator), Duration.Inf)
-
-    println(s"time elapsed ${TimeCounter.get()/1_000_000_000.0} s")
-
-    /*val node = index.ctx.newBlocksReferences.filter(_._2.isInstanceOf[MetaNode]).head._2.asInstanceOf[MetaNode]
-    val buffer = builder.serializer.serialize(node)
-    val dnode = builder.serializer.deserialize(buffer).get.asInstanceOf[MetaNode]
-
-    assert(dnode.inOrder() == node.inOrder())*/
+    if(list2 != list1){
+      assert(false)
+    }
 
     println()
   }

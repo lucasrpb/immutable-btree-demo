@@ -14,7 +14,7 @@ abstract class RichAsyncIndexIterator[K](var filter: K => Boolean = (_: K) => tr
   assert(limit != 0, "Limit must be < 0 (infinite) or > 0!")
 
   protected var counter = 0
-  protected var cur: Option[Node] = None
+  protected var cur: Option[Node[K]] = None
 
   protected var firstTime = false
   protected var stop = false

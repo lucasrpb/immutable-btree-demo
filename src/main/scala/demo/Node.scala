@@ -1,14 +1,14 @@
 package demo
 
-trait Node {
+trait Node[K] {
   val id: String
   val MIN: Int
   val MAX: Int
 
-  def lastKey: Datom
+  def lastKey: K
 
-  def copy()(implicit ctx: IndexContext): Node
-  def split()(implicit ctx: IndexContext): Node
+  def copy()(implicit ctx: IndexContext[K]): Node[K]
+  def split()(implicit ctx: IndexContext[K]): Node[K]
 
   def length: Int
   def remaning: Int = MAX - length

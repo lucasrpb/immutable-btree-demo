@@ -15,14 +15,14 @@ message SerializableDatom {
 }
 
 message SerializableLink {
-    SerializableDatom key = 1;
+    bytes key = 1;
     string link = 2;
 }
 
 message SerializableDataNode {
     string id = 1;
     string last_version = 2;
-    repeated SerializableDatom data = 3;
+    repeated bytes data = 3;
 }
 
 message SerializableMetaNode {
@@ -33,5 +33,4 @@ message SerializableMetaNode {
 
 message SerializableIndexContext {
     string id = 1;
-
 }

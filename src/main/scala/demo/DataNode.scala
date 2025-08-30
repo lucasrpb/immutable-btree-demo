@@ -1,19 +1,21 @@
 package demo
 
 import demo.IndexBuilder.IndexBuilt
+
 import scala.collection.Searching._
+import scala.reflect.ClassTag
 import scala.util.{Failure, Success, Try}
 
-class DataNode(val id: String)(val builder: IndexBuilt) extends Node {
+class DataNode[K: ClassTag](val id: String)(val builder: IndexBuilt[K]) extends Node[K] {
 
   import builder._
 
   override val MIN: Int = builder.MIN
   override val MAX: Int = builder.MAX
 
-  var data = IndexedSeq.empty[Datom]
+  var data = IndexedSeq.empty[K]
 
-  def insert(list: Seq[Datom]): Try[Int] = {
+  def insert(list: Seq[K]): Try[Int] = {
     assert(!list.isEmpty, "List should not be empty!")
 
     if(isFull) return Failure(new RuntimeException("Data Node is full!"))
@@ -28,19 +30,12 @@ class DataNode(val id: String)(val builder: IndexBuilt) extends Node {
     val size = Math.min(list.length, remaning)
 
     val slice = list.slice(0, size)
-
-    val t0 = System.nanoTime()
     data = (data ++ slice).sorted
-    val t1 = System.nanoTime()
-
-    val elapsed = t1 - t0
-
-   // TimeCounter.addAndGet(elapsed)
 
     Success(size)
   }
 
-  def binSearch(k: Datom, start: Int = 0, end: Int = data.length - 1)(implicit comparator: Ordering[Datom]): (Boolean, Int) = {
+  def binSearch(k: K, start: Int = 0, end: Int = data.length - 1)(implicit comparator: Ordering[K]): (Boolean, Int) = {
     if(start > end) return false -> start
 
     val pos = start + (end - start)/2
@@ -57,11 +52,7 @@ class DataNode(val id: String)(val builder: IndexBuilt) extends Node {
     if(found) Some(data(pos)) else None
   }*/
 
-  def get(k: Datom)(implicit comparator: Ordering[Datom] = ordering): Option[Datom] = {
-    data.findLast(e => e.e.compareTo(k.e) == 0 && e.a.compareTo(k.a) == 0 && e.t <= k.t)
-  }
-
-  override def copy()(implicit ctx: IndexContext): DataNode = {
+  override def copy()(implicit ctx: IndexContext[K]): DataNode[K] = {
     if(isNew) return this
 
     val copy = ctx.createDataNode()
@@ -72,7 +63,7 @@ class DataNode(val id: String)(val builder: IndexBuilt) extends Node {
     copy
   }
 
-  override def split()(implicit ctx: IndexContext): DataNode = {
+  override def split()(implicit ctx: IndexContext[K]): DataNode[K] = {
     val right = ctx.createDataNode()
 
     right.data = data.slice(data.length/2, length)
@@ -81,9 +72,9 @@ class DataNode(val id: String)(val builder: IndexBuilt) extends Node {
     right
   }
 
-  override def lastKey: Datom = data.last
+  override def lastKey: K = data.last
 
-  def inOrder(): Seq[Datom] = data
+  def inOrder(): Seq[K] = data
 
   override def length: Int = data.length
 }
